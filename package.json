@@ -1,0 +1,14 @@
+{
+  "name": "reddit-lead-monitor",
+  "version": "1.0.0",
+  "description": "Polls Reddit for hiring/freelance/AI-automation lead posts and pushes Telegram alerts",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
