@@ -1,8 +1,13 @@
+# PAUSED 2026-09-07: Reddit closed self-service API app registration under its
+# Responsible Builder Policy — new OAuth apps now require a manual approval
+# ticket with no guaranteed response. This cloud path is on hold until/unless
+# that access is approved. The live monitor runs locally instead, via
+# automation/reddit-monitor-local (uses the already-authenticated opencli
+# Reddit session, no API key needed). Re-add the `schedule:` trigger below and
+# fill in REDDIT_CLIENT_ID/SECRET if API access is ever approved.
 name: Poll Reddit for leads
 
 on:
-  schedule:
-    - cron: "*/10 * * * *"
   workflow_dispatch: {}
 
 permissions:
