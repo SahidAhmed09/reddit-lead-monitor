@@ -1,18 +1,54 @@
-// Polls Reddit's public JSON search (no auth needed) for new hiring/freelance/
-// dev/AI-automation posts and pushes a Telegram alert the moment a match appears.
+// Polls Reddit via its official OAuth API (app-only, client_credentials grant —
+// no user login needed) for new hiring/freelance/dev/AI-automation posts and
+// pushes a Telegram alert the moment a match appears.
+//
+// Plain unauthenticated .json scraping returns HTTP 403 from cloud/datacenter
+// IPs (confirmed on GitHub Actions runners), so OAuth is required here.
 
 const fs = require("fs");
 const path = require("path");
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const REDDIT_CLIENT_ID = process.env.REDDIT_CLIENT_ID;
+const REDDIT_CLIENT_SECRET = process.env.REDDIT_CLIENT_SECRET;
+const REDDIT_USER_AGENT = process.env.REDDIT_USER_AGENT || "reddit-lead-monitor:v1.0 (by /u/Spiritual-Spring366)";
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 5 * 60 * 1000);
 const STATE_FILE = path.join(__dirname, "seen.json");
 const MAX_SEEN_IDS = 3000;
 
 if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-  console.error("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID env vars. Set them in Render's dashboard.");
+  console.error("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID env vars.");
   process.exit(1);
+}
+if (!REDDIT_CLIENT_ID || !REDDIT_CLIENT_SECRET) {
+  console.error("Missing REDDIT_CLIENT_ID or REDDIT_CLIENT_SECRET env vars. Create a 'script' app at https://www.reddit.com/prefs/apps");
+  process.exit(1);
+}
+
+let cachedToken = null; // { access_token, expiresAt }
+
+async function getRedditAccessToken() {
+  if (cachedToken && cachedToken.expiresAt > Date.now() + 30_000) {
+    return cachedToken.access_token;
+  }
+  const basicAuth = Buffer.from(`${REDDIT_CLIENT_ID}:${REDDIT_CLIENT_SECRET}`).toString("base64");
+  const res = await fetch("https://www.reddit.com/api/v1/access_token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${basicAuth}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent": REDDIT_USER_AGENT,
+    },
+    body: "grant_type=client_credentials",
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Reddit OAuth token request failed: HTTP ${res.status} ${body}`);
+  }
+  const json = await res.json();
+  cachedToken = { access_token: json.access_token, expiresAt: Date.now() + json.expires_in * 1000 };
+  return cachedToken.access_token;
 }
 
 // Subreddits where "hiring a dev / freelancer / AI automation help" posts actually show up.
@@ -81,10 +117,12 @@ function matchesKeywords(title, selftext) {
 }
 
 async function fetchNewPosts(subreddit) {
-  const url = `https://www.reddit.com/r/${subreddit}/new.json?limit=25`;
+  const token = await getRedditAccessToken();
+  const url = `https://oauth.reddit.com/r/${subreddit}/new?limit=25`;
   const res = await fetch(url, {
     headers: {
-      "User-Agent": "reddit-lead-monitor:v1.0 (by /u/Spiritual-Spring366)",
+      Authorization: `Bearer ${token}`,
+      "User-Agent": REDDIT_USER_AGENT,
     },
   });
   if (!res.ok) {
