@@ -144,9 +144,11 @@ async function pollOnce(state) {
   saveState(state);
 }
 
+const RUN_ONCE = process.argv.includes("--once") || process.env.GITHUB_ACTIONS === "true";
+
 async function main() {
   const state = loadState();
-  console.log(`Reddit lead monitor started. Watching ${SUBREDDITS.length} subreddits every ${POLL_INTERVAL_MS / 1000}s.`);
+  console.log(`Reddit lead monitor started. Watching ${SUBREDDITS.length} subreddits.`);
 
   // On first run ever, seed seenIds without alerting so we don't blast old posts.
   const isFirstRun = state.seenIds.size === 0;
@@ -162,9 +164,17 @@ async function main() {
       await new Promise((r) => setTimeout(r, 1500));
     }
     saveState(state);
+    if (RUN_ONCE) return;
   }
 
   await pollOnce(state);
+
+  if (RUN_ONCE) {
+    console.log("Run-once mode (GitHub Actions) — exiting after one pass.");
+    return;
+  }
+
+  console.log(`Continuous mode — polling every ${POLL_INTERVAL_MS / 1000}s.`);
   setInterval(() => pollOnce(state).catch((e) => console.error("Poll cycle failed:", e)), POLL_INTERVAL_MS);
 }
 
